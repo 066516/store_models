@@ -77,7 +77,7 @@ model OrderDetail {
 
 model Shipping {
   id         Int              @id @default(autoincrement())
-  status     String
+  status     String           @default("pending")
   date       DateTime         @default(now())
   order      Order            @relation(fields: [orderId], references: [id])
   orderId    Int              @unique // Make this field unique

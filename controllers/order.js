@@ -28,7 +28,7 @@ exports.createOrderFromCart = async (req, res) => {
     // Fetch and validate the coupon if provided
     let coupon = null;
     if (couponCode) {
-      coupon = await prisma.coupon.findUnique({
+      coupon = await prisma.coupon.findFirst({
         where: { code: couponCode },
         include: { products: true },
       });
@@ -106,12 +106,18 @@ exports.createOrderWithProduct = async (req, res) => {
 
       let coupon = null;
       if (couponCode) {
-        coupon = await tx.coupon.findUnique({
+        coupon = await tx.coupon.findFirst({
           where: { code: couponCode },
           include: { products: true },
         });
-        if (!coupon || !coupon.products.some(p => p.id === productId) || new Date(coupon.expiration) < new Date()) {
-          throw new Error("Invalid or expired coupon, or not applicable to this product.");
+        if (
+          !coupon ||
+          !coupon.products.some((p) => p.id === productId) ||
+          new Date(coupon.expiration) < new Date()
+        ) {
+          throw new Error(
+            "Invalid or expired coupon, or not applicable to this product."
+          );
         }
       }
 
@@ -127,14 +133,22 @@ exports.createOrderWithProduct = async (req, res) => {
         },
       });
 
-      await tx.product.update({ where: { id: productId }, data: { quantity: { decrement: quantity } } });
+      await tx.product.update({
+        where: { id: productId },
+        data: { quantity: { decrement: quantity } },
+      });
 
       // Apply coupon if valid
       if (coupon) {
-        totalAmount = applyCouponDiscount(totalAmount, coupon, [{ product, quantity }]);
+        totalAmount = applyCouponDiscount(totalAmount, coupon, [
+          { product, quantity },
+        ]);
       }
 
-      const updatedOrder = await tx.order.update({ where: { id: order.id }, data: { totalAmount } });
+      const updatedOrder = await tx.order.update({
+        where: { id: order.id },
+        data: { totalAmount },
+      });
 
       return updatedOrder;
     });
@@ -146,7 +160,6 @@ exports.createOrderWithProduct = async (req, res) => {
   }
 };
 
-
 // Fetch all orders for a user
 exports.getUserOrders = async (req, res) => {
   const userId = req.user.userId;
@@ -154,6 +167,29 @@ exports.getUserOrders = async (req, res) => {
   try {
     const orders = await prisma.order.findMany({
       where: { userId },
+    });
+
+    res.json(orders);
+  } catch (error) {
+    console.error("Failed to get orders:", error);
+    res.status(500).json({ message: "Failed to get orders." });
+  }
+};
+exports.getUserOrdersOnPending = async (req, res) => {
+  const userId = req.user.userId;
+
+  try {
+    const orders = await prisma.order.findMany({
+      where: {
+        userId,
+        shipping: {
+          // Use 'some' to find orders with at least one shipping record that matches the criteria
+          status: "pending",
+        },
+      },
+      include: {
+        shipping: true,
+      },
     });
 
     res.json(orders);
